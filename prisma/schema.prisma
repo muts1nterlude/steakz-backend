@@ -1,0 +1,187 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  HQ_MANAGER
+  BRANCH_MANAGER
+  CHEF
+  CHIEF
+  WAITER
+  CASHIER
+  CUSTOMER
+  ADMIN
+  DELIVERY_GUY
+  OPEN_AREA
+  HOST
+}
+
+model Branch {
+  id                String             @id @default(uuid())
+  name              String             @unique // "Johannesburg", "Cape Town", "Durban", etc.
+  location          String             // Original location field
+  city              String?            // README Requirement
+  address           String?            // README Requirement
+  users             User[]             @relation("BranchEmployees")
+  orders            Order[]
+  procurementOrders ProcurementOrder[]
+  inventory         Inventory[]
+  reservations      Reservation[]
+  financials        FinancialRecord[]
+  expenses          Expense[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+}
+
+model User {
+  id                String             @id @default(uuid())
+  email             String             @unique
+  password          String
+  name              String             // Maps to full_name in README
+  role              Role               @default(CUSTOMER)
+  isSuspended       Boolean            @default(false)
+  is_active         Boolean            @default(true) // README Requirement
+  salary            Decimal            @default(0.00) @db.Decimal(10, 2)
+  branchId          String?            // Null for Global ADMIN and HQ_MANAGER
+  branch            Branch?            @relation("BranchEmployees", fields: [branchId], references: [id], onDelete: SetNull)
+  orders            Order[]            @relation("CustomerOrders")
+  deliveries        Delivery[]         @relation("DeliveryStaff")
+  procurementOrders ProcurementOrder[]
+  reservations      Reservation[]
+  payroll           Payroll[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+}
+
+model MenuItem {
+  id          String      @id @default(uuid())
+  name        String
+  description String
+  price       Decimal     @db.Decimal(10, 2)
+  category    String      
+  isAvailable Boolean     @default(true)
+  branchId    String?     // README: branch_id on MenuItem
+  imageUrl    String?
+  orderItems  OrderItem[]
+  createdAt   DateTime    @default(now())
+}
+
+model Order {
+  id              String      @id @default(uuid())
+  customer_name   String?     // README Requirement
+  type            String      // "TAKEAWAY" or "DELIVERY"
+  status          String      // "PENDING", "PREPARING", "READY", "DELIVERED", "CANCELLED"
+  totalPrice      Decimal     @db.Decimal(10, 2)
+  branchId        String
+  branch          Branch      @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  customerId      String?     // For logged in customers
+  customer        User?       @relation("CustomerOrders", fields: [customerId], references: [id], onDelete: SetNull)
+  tableNumber     Int?
+  deliveryAddress String?
+  reservationId   String?     // Links a dine-in order to the reservation that brought the guest in
+  reservation     Reservation? @relation(fields: [reservationId], references: [id], onDelete: SetNull)
+  items           OrderItem[]
+  delivery        Delivery?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+}
+
+model OrderItem {
+  id         String   @id @default(uuid())
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItemId String
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
+  quantity   Int
+  price      Decimal  @db.Decimal(10, 2)
+}
+
+model Reservation {
+  id              String   @id @default(uuid())
+  branchId        String
+  branch          Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  customerId      String   // Mandatory registration link
+  customer        User     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  tableNumber     Int?
+  timeSlot        String?
+  reservationTime DateTime // README: reservation_date
+  guestsCount     Int      // README: number_of_people
+  status          String   @default("PENDING") // "PENDING", "CONFIRMED", "PREPARING", "CANCELLED"
+  orders          Order[]  // Dine-in orders placed by this reservation's guests
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Inventory {
+  id              String             @id @default(uuid())
+  branchId        String
+  branch          Branch             @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  itemName        String
+  quantity        Int
+  unit            String             // e.g., "kg", "units"
+  lowStockAlertAt Int                @default(10)
+  orders          ProcurementOrder[]
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@unique([branchId, itemName])
+}
+
+model ProcurementOrder {
+  id                String    @id @default(uuid())
+  inventoryItemId   String
+  inventoryItem     Inventory @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
+  branchId          String
+  branch            Branch    @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  quantityRequested Int
+  status            String    @default("PENDING")
+  requestedById     String?
+  requestedBy       User?     @relation(fields: [requestedById], references: [id], onDelete: SetNull)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+model Payroll {
+  id          String   @id @default(uuid())
+  employee_id String
+  employee    User     @relation(fields: [employee_id], references: [id], onDelete: Cascade)
+  salary      Decimal  @db.Decimal(10, 2)
+  paidAt      DateTime @default(now())
+}
+
+model Expense {
+  id          String   @id @default(uuid())
+  branch_id   String
+  branch      Branch   @relation(fields: [branch_id], references: [id], onDelete: Cascade)
+  description String
+  amount      Decimal  @db.Decimal(10, 2)
+  createdAt   DateTime @default(now())
+}
+
+model Delivery {
+  id              String   @id @default(uuid())
+  order_id        String   @unique
+  order           Order    @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  driver_id       String?
+  driver          User?    @relation("DeliveryStaff", fields: [driver_id], references: [id], onDelete: SetNull)
+  delivery_status String   @default("PENDING") // README Requirement
+  updatedAt       DateTime @updatedAt
+}
+
+model FinancialRecord {
+  id        String   @id @default(uuid())
+  branchId  String
+  branch    Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  revenue   Decimal  @default(0.00) @db.Decimal(12, 2)
+  expenses  Decimal  @default(0.00) @db.Decimal(12, 2)
+  payroll   Decimal  @default(0.00) @db.Decimal(12, 2)
+  monthYear DateTime // Aggregated tracking date (e.g., 2026-05-01)
+  updatedAt DateTime @updatedAt
+
+  @@unique([branchId, monthYear])
+}
