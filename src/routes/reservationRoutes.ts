@@ -74,7 +74,7 @@ router.post('/', async (req: Request, res: Response) => {
 });
 
 // 2. UPDATE RESERVATION STATUS (ADMIN/HQ/BRANCH MANAGER)
-router.patch('/:id/status', async (req: Request, res: Response) => {
+router.patch('/:id/status', authorize('ADMIN', 'HQ_MANAGER', 'BRANCH_MANAGER', 'HOST'), async (req: Request, res: Response) => {
   const { id } = req.params;
   const { status } = req.body; // "CONFIRMED", "PREPARING", "CANCELLED", "ARRIVED"
   const user = req.user;

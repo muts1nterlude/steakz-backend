@@ -59,7 +59,7 @@ router.post('/', authorize('ADMIN', 'HQ_MANAGER', 'BRANCH_MANAGER', 'CHIEF'), as
   }
 });
 
-router.get('/', async (req: Request, res: Response) => {
+router.get('/', authorize('ADMIN', 'HQ_MANAGER', 'BRANCH_MANAGER', 'CHIEF'), async (req: Request, res: Response) => {
   try {
     const branchId = req.query['branchId'] ? String(req.query['branchId']) : undefined;
     const procurementOrders = await prisma.procurementOrder.findMany({
